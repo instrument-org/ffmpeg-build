@@ -11,7 +11,7 @@ Each archive holds `bin/ffmpeg` and `bin/ffprobe`, `licenses/COPYING.GPLv3`, and
 
 ## Source
 
-The source for a release is FFmpeg's own release tarball for the version in `versions.env`, plus the dependency versions pinned by the build script and images that `versions.env` names at that tag.
+The source for a release is FFmpeg at the version in `versions.env`: its release tarball on macOS, and on Linux and Windows its release branch at `FFMPEG_COMMIT`, which is that release plus the fixes FFmpeg has put on the branch since. BtbN's images carry codec libraries newer than the release tag compiles against, and BtbN builds that branch too. The codec libraries are the versions pinned by the build script and images `versions.env` names at that tag.
 
 ## Versions
 
@@ -21,6 +21,7 @@ The source for a release is FFmpeg's own release tarball for the version in `ver
 
 | Patch | What it does | Drop it when |
 | --- | --- | --- |
+| `patches/ffmpeg-builds/0001-checkout-a-pinned-commit.patch` | Checks out `FFMPEG_COMMIT` after cloning the release branch, which BtbN builds at its head | BtbN's build takes a commit |
 | `patches/ffmpeg-build-script/0001-gpl-without-nonfree.patch` | The script's one switch for GPL codecs also turns on `--enable-nonfree` and fdk-aac; this keeps the GPL half only | the script gets a GPL-only switch |
 
 ## Releasing

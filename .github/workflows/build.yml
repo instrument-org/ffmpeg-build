@@ -36,13 +36,14 @@ jobs:
           source build/versions.env
           git clone -q https://github.com/BtbN/FFmpeg-Builds.git btbn
           git -C btbn checkout -q "$BTBN_COMMIT"
+          for p in build/patches/ffmpeg-builds/*.patch; do git -C btbn apply --verbose "../$p"; done
           major_minor=$(cut -d. -f1-2 <<<"$FFMPEG")
           image=ghcr.io/btbn/ffmpeg-builds/${{ matrix.btbn }}-gpl-shared-$major_minor
           digest_var=IMAGE_${{ matrix.btbn }}
           docker pull "$image@${!digest_var}"
           docker tag "$image@${!digest_var}" "$image:latest"
           start=$SECONDS
-          (cd btbn && GITHUB_REPOSITORY=btbn/ffmpeg-builds GIT_BRANCH_OVERRIDE="n$FFMPEG" \
+          (cd btbn && GITHUB_REPOSITORY=btbn/ffmpeg-builds FFMPEG_COMMIT="$FFMPEG_COMMIT" \
             FFBUILD_OUTPUT_DIR="$GITHUB_WORKSPACE/built" ./build.sh ${{ matrix.btbn }} gpl-shared "$major_minor")
           echo "build $((SECONDS - start))s" | tee timings.txt
       - name: package
@@ -54,7 +55,12 @@ jobs:
             cp built/bin/ffmpeg.exe built/bin/ffprobe.exe built/bin/*.dll out/bin/
           else
             cp built/bin/ffmpeg built/bin/ffprobe out/bin/
-            mkdir -p out/lib && cp -a built/lib/*.so* out/lib/
+            # Only the names the programs load, as real files: an archive of
+            # symlinks does not survive every copy on the way into the app.
+            mkdir -p out/lib
+            for f in built/lib/*.so.*; do
+              if [[ $(basename "$f") =~ \.so\.[0-9]+$ ]]; then cp -L "$f" out/lib/; fi
+            done
           fi
           cp built/LICENSE.txt out/licenses/COPYING.GPLv3
           bash build/scripts/package.sh "$T"

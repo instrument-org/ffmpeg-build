@@ -19,4 +19,4 @@ else
 fi
 cd ..
 if command -v sha256sum >/dev/null; then sha256sum "$file" > "$file.sha256"; else shasum -a 256 "$file" > "$file.sha256"; fi
-du -k out/bin/* out/lib/* "$file" 2>/dev/null | tee -a timings.txt
+du -k out/bin/* $(ls -d out/lib/* 2>/dev/null) "$file" | tee -a timings.txt

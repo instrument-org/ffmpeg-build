@@ -1,0 +1,25 @@
+diff --git a/src/40-cli.sh b/src/40-cli.sh
+index 1691593..8012f4d 100644
+--- a/src/40-cli.sh
++++ b/src/40-cli.sh
+@@ -71,7 +71,6 @@ while (($# > 0)); do
+         shift
+         ;;
+     --enable-gpl-and-non-free)
+-        CONFIGURE_OPTIONS+=("--enable-nonfree")
+         CONFIGURE_OPTIONS+=("--enable-gpl")
+         NONFREE_AND_GPL=true
+         shift
+diff --git a/src/packages/40-audio.sh b/src/packages/40-audio.sh
+index 7452e2f..fe2da13 100644
+--- a/src/packages/40-audio.sh
++++ b/src/packages/40-audio.sh
+@@ -212,7 +212,7 @@ build_libtheora() {
+ }
+ 
+ build_fdk_aac() {
+-    if ! $NONFREE_AND_GPL; then return; fi
++    return
+ 
+     if build "fdk_aac" "${VER_FDK_AAC[0]}"; then
+         download "https://sourceforge.net/projects/opencore-amr/files/fdk-aac/fdk-aac-$CURRENT_PACKAGE_VERSION.tar.gz/download?use_mirror=gigenet" "fdk-aac-$CURRENT_PACKAGE_VERSION.tar.gz"

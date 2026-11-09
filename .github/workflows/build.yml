@@ -1,0 +1,183 @@
+# Builds GPL FFmpeg at the version in versions.env for every platform
+# Instrument ships, and smoke-tests each build on its own platform. Pushing a
+# tag also publishes the archives, their checksums and SHA256SUMS as a release.
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Linux and Windows: BtbN's build.sh, cross-compiling in its prebuilt images.
+  btbn:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, btbn: linux64 }
+          - { target: linux-arm64, btbn: linuxarm64 }
+          - { target: win32-x64, btbn: win64 }
+          - { target: win32-arm64, btbn: winarm64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: build
+      - name: build
+        run: |
+          set -euo pipefail
+          source build/versions.env
+          git clone -q https://github.com/BtbN/FFmpeg-Builds.git btbn
+          git -C btbn checkout -q "$BTBN_COMMIT"
+          major_minor=$(cut -d. -f1-2 <<<"$FFMPEG")
+          image=ghcr.io/btbn/ffmpeg-builds/${{ matrix.btbn }}-gpl-shared-$major_minor
+          digest_var=IMAGE_${{ matrix.btbn }}
+          docker pull "$image@${!digest_var}"
+          docker tag "$image@${!digest_var}" "$image:latest"
+          start=$SECONDS
+          (cd btbn && GITHUB_REPOSITORY=btbn/ffmpeg-builds GIT_BRANCH_OVERRIDE="n$FFMPEG" \
+            FFBUILD_OUTPUT_DIR="$GITHUB_WORKSPACE/built" ./build.sh ${{ matrix.btbn }} gpl-shared "$major_minor")
+          echo "build $((SECONDS - start))s" | tee timings.txt
+      - name: package
+        run: |
+          set -euo pipefail
+          T=${{ matrix.target }}
+          mkdir -p out/bin out/licenses
+          if [[ $T == win32-* ]]; then
+            cp built/bin/ffmpeg.exe built/bin/ffprobe.exe built/bin/*.dll out/bin/
+          else
+            cp built/bin/ffmpeg built/bin/ffprobe out/bin/
+            mkdir -p out/lib && cp -a built/lib/*.so* out/lib/
+          fi
+          cp built/LICENSE.txt out/licenses/COPYING.GPLv3
+          bash build/scripts/package.sh "$T"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: |
+            ffmpeg-${{ matrix.target }}.*
+            timings.txt
+
+  # macOS: markus-perl's build script, from source, on each architecture.
+  macos:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-26 }
+          - { target: darwin-x64, os: macos-26-intel }
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: build
+      - name: tools
+        run: brew install meson ninja
+      - name: build
+        run: |
+          set -euo pipefail
+          source build/versions.env
+          git clone -q https://github.com/markus-perl/ffmpeg-build-script.git script
+          git -C script checkout -q "$BUILD_SCRIPT_COMMIT"
+          for p in build/patches/ffmpeg-build-script/*.patch; do git -C script apply --verbose "../$p"; done
+          mkdir work && cd work
+          start=$SECONDS
+          ../script/build-ffmpeg --build --enable-gpl-and-non-free --ffmpeg-version="$FFMPEG" --skip-install
+          echo "build $((SECONDS - start))s" | tee ../timings.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-log-${{ matrix.target }}
+          path: work/build.log
+      - name: package
+        run: |
+          set -euo pipefail
+          mkdir -p out/bin out/licenses
+          cp work/workspace/bin/ffmpeg work/workspace/bin/ffprobe out/bin/
+          # Everything but the system's own libraries has to be linked in.
+          for b in out/bin/*; do
+            otool -L "$b"
+            if otool -L "$b" | tail -n +2 | awk '{print $1}' | grep -v -E '^(/usr/lib/|/System/Library/)'; then
+              echo "$b links a library outside the system"; exit 1
+            fi
+            otool -l "$b" | grep -A3 LC_BUILD_VERSION | grep minos
+          done
+          cp "$(find work/packages -name COPYING.GPLv3 | head -1)" out/licenses/
+          bash build/scripts/package.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: |
+            ffmpeg-${{ matrix.target }}.*
+            timings.txt
+
+  # Every archive, unpacked and run on the platform it is for.
+  smoke:
+    name: smoke ${{ matrix.target }}
+    needs: [btbn, macos]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, os: ubuntu-latest }
+          - { target: linux-arm64, os: ubuntu-24.04-arm }
+          - { target: win32-x64, os: windows-latest }
+          - { target: win32-arm64, os: windows-11-arm }
+          - { target: darwin-arm64, os: macos-26 }
+          - { target: darwin-x64, os: macos-26-intel }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: build
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ffmpeg-${{ matrix.target }}
+      - name: smoke test
+        run: |
+          set -euo pipefail
+          source build/versions.env
+          mkdir x
+          if [[ -f ffmpeg-${{ matrix.target }}.zip ]]; then
+            7z x -bd -ox ffmpeg-${{ matrix.target }}.zip >/dev/null || unzip -q ffmpeg-${{ matrix.target }}.zip -d x
+          else
+            tar -xzf ffmpeg-${{ matrix.target }}.tar.gz -C x
+          fi
+          find x -maxdepth 2 | sort
+          bash build/scripts/smoke-test.sh x "$FFMPEG"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: ffmpeg-*
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          cat ffmpeg-*.sha256 | sed 's/ \*/  /' > SHA256SUMS
+          cat SHA256SUMS
+          source ../versions.env
+          gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --notes "FFmpeg $FFMPEG, GPL, built from versions.env at this tag with the patches under patches/ applied. SHA256SUMS lists every archive." \
+            ffmpeg-*.zip ffmpeg-*.tar.gz ffmpeg-*.sha256 SHA256SUMS

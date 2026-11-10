@@ -163,7 +163,7 @@ jobs:
             tar -xzf ffmpeg-${{ matrix.target }}.tar.gz -C x
           fi
           find x -maxdepth 2 | sort
-          bash build/scripts/smoke-test.sh x "$FFMPEG"
+          bash build/scripts/smoke-test.sh x "$FFMPEG" ${{ matrix.target }}
 
   release:
     if: startsWith(github.ref, 'refs/tags/')

@@ -4,6 +4,8 @@ Our builds of [FFmpeg](https://ffmpeg.org) for Instrument, which runs `ffmpeg` a
 
 The builds are GPL (`--enable-gpl --enable-version3`, so GPLv3) with every codec library that license allows, x264 and x265 included, and nothing from `--enable-nonfree`, which could not be redistributed. The smoke test fails a build that has it.
 
+BtbN's Windows arm64 images leave out a few codec libraries the other targets carry: libvpx (FFmpeg still decodes VP8 and VP9 itself), libaom (dav1d decodes AV1 and SVT-AV1 encodes it), libopenmpt, Intel's libvpl, and the AVS2/AVS3 and LCEVC libraries.
+
 Each archive holds `bin/ffmpeg` and `bin/ffprobe`, `licenses/COPYING.GPLv3`, and `BUILDINFO.txt` naming what it was built from.
 
 - **Linux and Windows** come from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)' `gpl-shared` variant: the two programs share FFmpeg's libraries, beside them in `bin/` on Windows and in `lib/` on Linux (found through an `$ORIGIN/../lib` rpath). BtbN cross-compiles in Docker images that carry every dependency already built; `versions.env` pins the script's commit and each image's digest.

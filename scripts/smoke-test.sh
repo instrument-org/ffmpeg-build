@@ -1,9 +1,9 @@
 #!/bin/bash
-# Usage: smoke-test.sh <unpacked archive dir> <ffmpeg version>
+# Usage: smoke-test.sh <unpacked archive dir> <ffmpeg version> <target>
 # Runs the binaries the way Instrument does: from where they were unpacked,
 # with nothing on PATH or LD_LIBRARY_PATH pointing at them.
 set -euo pipefail
-dir=$1 version=$2
+dir=$1 version=$2 target=$3
 exe=""; [[ -f "$dir/bin/ffmpeg.exe" ]] && exe=.exe
 ffmpeg="$dir/bin/ffmpeg$exe" ffprobe="$dir/bin/ffprobe$exe"
 unset LD_LIBRARY_PATH DYLD_LIBRARY_PATH
@@ -17,6 +17,9 @@ conf=$("$ffmpeg" -hide_banner -buildconf)
 for want in --enable-gpl --enable-libx264 --enable-libx265 --enable-libdav1d \
   --enable-libwebp --enable-libvpx --enable-libopus --enable-libmp3lame \
   --enable-libass --enable-libzimg; do
+  # BtbN's Windows arm64 images build no libvpx (nor libaom, which dav1d and
+  # SVT-AV1 cover); FFmpeg still decodes VP8 and VP9 itself.
+  if [[ $target == win32-arm64 && $want == --enable-libvpx ]]; then continue; fi
   grep -q -- "$want" <<<"$conf" || { echo "missing $want"; exit 1; }
 done
 if grep -q -- --enable-nonfree <<<"$conf"; then

@@ -173,13 +173,17 @@ jobs:
           (cd btbn/.cache/downloads && find . -maxdepth 1 -type f -name '*.tar.xz' -print0 | xargs -0 tar -cf ../../../source/libraries.tar)
           tar -cf source/build-scripts.tar --exclude=.git --exclude=.cache btbn
           tar -cf source-linux-windows.tar -C source libraries.tar build-scripts.tar
-          ls -l ffmpeg-source-*.tar.xz source-linux-windows.tar
+          # In parts under GitHub's 2 GiB limit for one release file; `cat`
+          # joins them back into the tar.
+          split -b 1900m -d -a 2 source-linux-windows.tar source-linux-windows.tar.
+          rm source-linux-windows.tar
+          ls -l ffmpeg-source-*.tar.xz source-linux-windows.tar.*
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: source-linux-windows
           path: |
             ffmpeg-source-*.tar.xz
-            source-linux-windows.tar
+            source-linux-windows.tar.*
           compression-level: 0
 
   # Every archive, unpacked and run on the platform it is for.
@@ -242,11 +246,11 @@ jobs:
         run: |
           cd dist
           cat ffmpeg-*.sha256 | sed 's/ \*/  /' > SHA256SUMS
-          sha256sum ffmpeg-source-*.tar.xz source-*.tar > SOURCE-SHA256SUMS
+          sha256sum ffmpeg-source-*.tar.xz source-*.tar source-*.tar.[0-9]* > SOURCE-SHA256SUMS
           cat SHA256SUMS
           source ../versions.env
           gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
-            --notes "FFmpeg $FFMPEG, GPL, built from versions.env at this tag with the patches under patches/ applied. SHA256SUMS lists every archive. The source they were built from is attached: ffmpeg-source-*.tar.xz (FFmpeg at FFMPEG_COMMIT, for Linux and Windows), source-linux-windows.tar (every library BtbN's images compile, and its scripts) and source-macos.tar (every library tarball the macOS build compiles, FFmpeg's release tarball among them, and its script), listed in SOURCE-SHA256SUMS." \
+            --notes "FFmpeg $FFMPEG, GPL, built from versions.env at this tag with the patches under patches/ applied. SHA256SUMS lists every archive. The source they were built from is attached: ffmpeg-source-*.tar.xz (FFmpeg at FFMPEG_COMMIT, for Linux and Windows), source-linux-windows.tar.00, .01 and on (every library BtbN's images compile, and its scripts, split under GitHub's 2 GiB file limit; cat joins them) and source-macos.tar (every library tarball the macOS build compiles, FFmpeg's release tarball among them, and its script), listed in SOURCE-SHA256SUMS." \
             ffmpeg-*.zip ffmpeg-*.tar.gz ffmpeg-*.sha256 SHA256SUMS \
-            ffmpeg-source-*.tar.xz source-*.tar SOURCE-SHA256SUMS
+            ffmpeg-source-*.tar.xz source-*.tar source-*.tar.[0-9]* SOURCE-SHA256SUMS

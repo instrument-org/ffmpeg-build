@@ -1,6 +1,7 @@
 # Builds GPL FFmpeg at the version in versions.env for every platform
 # Instrument ships, and smoke-tests each build on its own platform. Pushing a
-# tag also publishes the archives, their checksums and SHA256SUMS as a release.
+# tag also publishes the archives, their checksums and SHA256SUMS as a release,
+# with the source every archive was built from.
 name: build
 
 on:
@@ -119,12 +120,67 @@ jobs:
           done
           cp "$(find work/packages -name COPYING.GPLv3 | head -1)" out/licenses/
           bash build/scripts/package.sh ${{ matrix.target }}
+      # The tarball of every library the macOS builds compile, FFmpeg's own
+      # release tarball among them, and the build script with our patches.
+      # Both architectures build from the same tarballs, so one keeps them.
+      - name: source
+        if: matrix.target == 'darwin-arm64'
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          (cd work/packages && find . -maxdepth 1 -type f \( -name '*.tar.*' -o -name '*.tgz' -o -name '*.zip' \) -print0 \
+            | xargs -0 tar -cf ../../source/libraries.tar)
+          tar -cf source/build-script.tar --exclude=.git script
+          tar -cf source-macos.tar -C source libraries.tar build-script.tar
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.target == 'darwin-arm64'
+        with:
+          name: source-macos
+          path: source-macos.tar
+          compression-level: 0
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ffmpeg-${{ matrix.target }}
           path: |
             ffmpeg-${{ matrix.target }}.*
             timings.txt
+
+  # The source the Linux and Windows archives are built from: FFmpeg at
+  # FFMPEG_COMMIT, every library BtbN's images compile, fetched by its own
+  # download.sh from the commits its scripts pin, and its scripts with our
+  # patches.
+  source:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: build
+      - name: source
+        run: |
+          set -euo pipefail
+          source build/versions.env
+          git init -q ffmpeg
+          git -C ffmpeg fetch -q --depth 1 https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_COMMIT"
+          git -C ffmpeg archive --prefix="ffmpeg-$FFMPEG_COMMIT/" FETCH_HEAD | xz -T0 > "ffmpeg-source-$FFMPEG_COMMIT.tar.xz"
+          git clone -q https://github.com/BtbN/FFmpeg-Builds.git btbn
+          git -C btbn checkout -q "$BTBN_COMMIT"
+          for p in build/patches/ffmpeg-builds/*.patch; do git -C btbn apply --verbose "../$p"; done
+          (cd btbn && GITHUB_REPOSITORY=btbn/ffmpeg-builds ./download.sh)
+          mkdir -p source
+          (cd btbn/.cache/downloads && find . -maxdepth 1 -type f -name '*.tar.xz' -print0 | xargs -0 tar -cf ../../../source/libraries.tar)
+          tar -cf source/build-scripts.tar --exclude=.git --exclude=.cache btbn
+          tar -cf source-linux-windows.tar -C source libraries.tar build-scripts.tar
+          ls -l ffmpeg-source-*.tar.xz source-linux-windows.tar
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-linux-windows
+          path: |
+            ffmpeg-source-*.tar.xz
+            source-linux-windows.tar
+          compression-level: 0
 
   # Every archive, unpacked and run on the platform it is for.
   smoke:
@@ -167,7 +223,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: smoke
+    needs: [smoke, source]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -176,14 +232,21 @@ jobs:
           path: dist
           pattern: ffmpeg-*
           merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: source-*
+          merge-multiple: true
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
           cat ffmpeg-*.sha256 | sed 's/ \*/  /' > SHA256SUMS
+          sha256sum ffmpeg-source-*.tar.xz source-*.tar > SOURCE-SHA256SUMS
           cat SHA256SUMS
           source ../versions.env
           gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
-            --notes "FFmpeg $FFMPEG, GPL, built from versions.env at this tag with the patches under patches/ applied. SHA256SUMS lists every archive." \
-            ffmpeg-*.zip ffmpeg-*.tar.gz ffmpeg-*.sha256 SHA256SUMS
+            --notes "FFmpeg $FFMPEG, GPL, built from versions.env at this tag with the patches under patches/ applied. SHA256SUMS lists every archive. The source they were built from is attached: ffmpeg-source-*.tar.xz (FFmpeg at FFMPEG_COMMIT, for Linux and Windows), source-linux-windows.tar (every library BtbN's images compile, and its scripts) and source-macos.tar (every library tarball the macOS build compiles, FFmpeg's release tarball among them, and its script), listed in SOURCE-SHA256SUMS." \
+            ffmpeg-*.zip ffmpeg-*.tar.gz ffmpeg-*.sha256 SHA256SUMS \
+            ffmpeg-source-*.tar.xz source-*.tar SOURCE-SHA256SUMS

@@ -17,6 +17,8 @@ Each archive holds `bin/ffmpeg` and `bin/ffprobe`, `licenses/COPYING.GPLv3`, and
 
 The source for a release is FFmpeg at the version in `versions.env`: its release tarball on macOS, and on Linux and Windows its release branch at `FFMPEG_COMMIT`, which is that release plus the fixes FFmpeg has put on the branch since. BtbN's images carry codec libraries newer than the release tag compiles against, and BtbN builds that branch too. The codec libraries are the versions pinned by the build script and images `versions.env` names at that tag.
 
+Every release attaches that source, as the GPL asks of anyone shipping the binaries: `ffmpeg-source-<commit>.tar.xz` (FFmpeg at `FFMPEG_COMMIT`), `source-linux-windows.tar` (the source of every library BtbN's images compile, fetched by its `download.sh` from the commits its scripts pin, and its scripts with our patches) and `source-macos.tar` (every tarball the macOS build compiles, FFmpeg's release tarball among them, and the build script with our patches). `SOURCE-SHA256SUMS` lists them. The Linux and Windows library source is what BtbN's scripts at `BTBN_COMMIT` pin, which the image digests in `versions.env` were taken beside.
+
 ## Versions
 
 `versions.env` names the FFmpeg release, the BtbN commit and image digests, and the macOS build script's commit. To move to a new FFmpeg release, change `FFMPEG`; for a new major or minor version, take a BtbN commit that has its addin and the digests of its `gpl-shared-<major.minor>` images. Push, and check that every build and smoke test passes.

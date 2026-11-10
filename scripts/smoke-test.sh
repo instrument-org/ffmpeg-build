@@ -25,10 +25,14 @@ done
 if grep -q -- --enable-nonfree <<<"$conf"; then
   echo "built with --enable-nonfree, which cannot be redistributed"; exit 1
 fi
-for omitted in --enable-libaom --enable-librav1e --enable-libopenh264; do
-  if grep -q -- "$omitted" <<<"$conf"; then echo "built with $omitted, which versions.env leaves out"; exit 1; fi
+# What versions.env leaves out, asked of the binary: BtbN's configure line
+# still names them, with the --disable flags after.
+encoders=$("$ffmpeg" -hide_banner -encoders)
+for omitted in libaom-av1 librav1e libopenh264; do
+  if grep -q -w -- "$omitted" <<<"$encoders"; then echo "built with $omitted, which versions.env leaves out"; exit 1; fi
 done
-if [[ $target == darwin-* ]] && grep -q -- --enable-vulkan <<<"$conf"; then
+grep -q -w libsvtav1 <<<"$encoders" || { echo "missing libsvtav1"; exit 1; }
+if [[ $target == darwin-* ]] && "$ffmpeg" -hide_banner -filters | grep -q _vulkan; then
   echo "built with Vulkan, which versions.env leaves out on macOS"; exit 1
 fi
 "$ffmpeg" -hide_banner -h demuxer=mov | grep -q heic || { echo "mov demuxer lacks heic"; exit 1; }

@@ -4,6 +4,8 @@ Our builds of [FFmpeg](https://ffmpeg.org) for Instrument, which runs `ffmpeg` a
 
 The builds are GPL (`--enable-gpl --enable-version3`, so GPLv3) with every codec library that license allows, x264 and x265 included, and nothing from `--enable-nonfree`, which could not be redistributed. The smoke test fails a build that has it.
 
+A few libraries are left out because another in the build does the same job, so no format is lost: rav1e and libaom (SVT-AV1 encodes AV1, AVIF included, and dav1d decodes it) and Cisco's openh264 (x264 encodes H.264 and FFmpeg decodes it itself). The macOS builds also leave out Vulkan and libplacebo, since a Mac has no Vulkan driver unless MoltenVK is installed; VideoToolbox, Apple's hardware encoder and decoder, stays. `versions.env` lists them (`OMIT_CONFIGURE`, `OMIT_MACOS`), and the smoke test fails a build that has them.
+
 BtbN's Windows arm64 images leave out a few codec libraries the other targets carry: libvpx (FFmpeg still decodes VP8 and VP9 itself), libaom (dav1d decodes AV1 and SVT-AV1 encodes it), libopenmpt, Intel's libvpl, and the AVS2/AVS3 and LCEVC libraries.
 
 Each archive holds `bin/ffmpeg` and `bin/ffprobe`, `licenses/COPYING.GPLv3`, and `BUILDINFO.txt` naming what it was built from.
@@ -24,6 +26,7 @@ The source for a release is FFmpeg at the version in `versions.env`: its release
 | Patch | What it does | Drop it when |
 | --- | --- | --- |
 | `patches/ffmpeg-builds/0001-checkout-a-pinned-commit.patch` | Checks out `FFMPEG_COMMIT` after cloning the release branch, which BtbN builds at its head | BtbN's build takes a commit |
+| `patches/ffmpeg-builds/0002-append-configure-flags.patch` | Appends `FF_CONFIGURE_EXTRA` to FFmpeg's configure line, which the workflow sets to `OMIT_CONFIGURE`; the images bake their own flags in | BtbN's build takes extra configure flags |
 | `patches/ffmpeg-build-script/0001-gpl-without-nonfree.patch` | The script's one switch for GPL codecs also turns on `--enable-nonfree` and fdk-aac; this keeps the GPL half only | the script gets a GPL-only switch |
 
 ## Releasing

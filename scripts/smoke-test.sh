@@ -25,6 +25,12 @@ done
 if grep -q -- --enable-nonfree <<<"$conf"; then
   echo "built with --enable-nonfree, which cannot be redistributed"; exit 1
 fi
+for omitted in --enable-libaom --enable-librav1e --enable-libopenh264; do
+  if grep -q -- "$omitted" <<<"$conf"; then echo "built with $omitted, which versions.env leaves out"; exit 1; fi
+done
+if [[ $target == darwin-* ]] && grep -q -- --enable-vulkan <<<"$conf"; then
+  echo "built with Vulkan, which versions.env leaves out on macOS"; exit 1
+fi
 "$ffmpeg" -hide_banner -h demuxer=mov | grep -q heic || { echo "mov demuxer lacks heic"; exit 1; }
 
 t=$(mktemp -d)
@@ -34,9 +40,14 @@ t=$(mktemp -d)
 "$ffmpeg" -hide_banner -loglevel error -i "$t/h264.mp4" -frames:v 1 "$t/frame.png"
 "$ffmpeg" -hide_banner -loglevel error -i "$t/frame.png" "$t/frame.webp"
 "$ffmpeg" -hide_banner -loglevel error -i "$t/frame.png" -vf scale=320:-1 "$t/frame.jpg"
+# AV1 both ways, through the libraries left after the trim: AVIF and WebM.
+"$ffmpeg" -hide_banner -loglevel error -i "$t/frame.png" -c:v libsvtav1 -frames:v 1 "$t/frame.avif"
+"$ffmpeg" -hide_banner -loglevel error -i "$t/h264.mp4" -t 1 -c:v libsvtav1 -an "$t/av1.webm"
+"$ffmpeg" -hide_banner -loglevel error -c:v libdav1d -i "$t/av1.webm" -f null -
 "$ffprobe" -v error -show_entries stream=codec_name -of csv=p=0 "$t/h264.mp4" | tr '\n' ' '; echo
 "$ffprobe" -v error -show_entries stream=codec_name -of csv=p=0 "$t/hevc.mp4"
 "$ffprobe" -v error -show_entries stream=codec_name -of csv=p=0 "$t/frame.webp"
+"$ffprobe" -v error -show_entries stream=codec_name -of csv=p=0 "$t/frame.avif" | head -1
 ls -la "$t"
 rm -rf "$t"
 echo "smoke test passed"

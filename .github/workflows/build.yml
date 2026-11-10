@@ -44,7 +44,7 @@ jobs:
           docker tag "$image@${!digest_var}" "$image:latest"
           start=$SECONDS
           (cd btbn && GITHUB_REPOSITORY=btbn/ffmpeg-builds FFMPEG_COMMIT="$FFMPEG_COMMIT" \
-            FFBUILD_OUTPUT_DIR="$GITHUB_WORKSPACE/built" ./build.sh ${{ matrix.btbn }} gpl-shared "$major_minor")
+            FF_CONFIGURE_EXTRA="$OMIT_CONFIGURE" FFBUILD_OUTPUT_DIR="$GITHUB_WORKSPACE/built" ./build.sh ${{ matrix.btbn }} gpl-shared "$major_minor")
           echo "build $((SECONDS - start))s" | tee timings.txt
       - name: package
         run: |
@@ -97,7 +97,7 @@ jobs:
           for p in build/patches/ffmpeg-build-script/*.patch; do git -C script apply --verbose "../$p"; done
           mkdir work && cd work
           start=$SECONDS
-          ../script/build-ffmpeg --build --enable-gpl-and-non-free --ffmpeg-version="$FFMPEG" --skip-install
+          ../script/build-ffmpeg --build --enable-gpl-and-non-free --ffmpeg-version="$FFMPEG" --disable="$OMIT_MACOS" --skip-install
           echo "build $((SECONDS - start))s" | tee ../timings.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
